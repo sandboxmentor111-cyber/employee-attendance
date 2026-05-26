@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Employee Attendance & Work Report</title>
+  <style>
+    * { box-sizing: border-box; font-family: Arial, sans-serif; }
+    body { margin: 0; background: #f4f6fb; color: #222; }
+    header { background: #1f2937; color: white; padding: 18px 30px; }
+    .container { max-width: 1200px; margin: 25px auto; padding: 0 15px; }
+    .card { background: white; padding: 20px; border-radius: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.08); margin-bottom: 20px; }
+    input, select, button { padding: 11px; margin: 6px 0; border: 1px solid #ccc; border-radius: 8px; width: 100%; }
+    button { background: #2563eb; color: white; border: 0; cursor: pointer; font-weight: bold; }
+    button:hover { background: #1d4ed8; }
+    .danger { background: #dc2626; }
+    .success { background: #16a34a; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 15px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
+    th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; }
+    th { background: #f1f5f9; }
+    .hidden { display: none; }
+    .badge { padding: 5px 10px; border-radius: 20px; background: #e0f2fe; color: #0369a1; font-size: 13px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .summary { font-size: 22px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <h2>Employee Attendance System</h2>
+      <button onclick="logout()" id="logoutBtn" class="danger hidden" style="max-width:120px;">Logout</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div id="loginBox" class="card">
+      <h3>Login</h3>
+      <p><b>Admin:</b> username: admin | password: admin123</p>
+      <p><b>Employee:</b> username: emp1 / emp2 / emp3 / emp4 / emp5 | password: 1234</p>
+      <input id="username" placeholder="Username" />
+      <input id="password" type="password" placeholder="Password" />
+      <button onclick="login()">Login</button>
+    </div>
+
+    <div id="employeePanel" class="hidden">
+      <div class="card">
+        <div class="topbar">
+          <h3>Employee Panel</h3>
+          <span id="employeeName" class="badge"></span>
+        </div>
+        <div class="grid">
+          <button class="success" onclick="markInTime()">Mark In Time</button>
+          <button onclick="startBreak()">Start Break</button>
+          <button onclick="endBreak()">End Break</button>
+          <button class="danger" onclick="markOutTime()">Mark Out Time</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>My Today Status</h3>
+        <div id="todayStatus"></div>
+      </div>
+
+      <div class="card">
+        <h3>My Attendance History</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th><th>In</th><th>Out</th><th>Breaks</th><th>Break Time</th><th>Work Time</th>
+            </tr>
+          </thead>
+          <tbody id="myHistory"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="adminPanel" class="hidden">
+      <div class="card">
+        <h3>Admin Dashboard</h3>
+        <div class="grid">
+          <div>
+            <label>Employee</label>
+            <select id="filterEmployee" onchange="renderAdmin()">
+              <option value="all">All Employees</option>
+            </select>
+          </div>
+          <div>
+            <label>Report Type</label>
+            <select id="filterType" onchange="renderAdmin()">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <div>
+            <label>Select Date</label>
+            <input type="date" id="filterDate" onchange="renderAdmin()" />
+          </div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card"><p>Total Work Hours</p><div id="totalWork" class="summary">0h</div></div>
+        <div class="card"><p>Total Break Time</p><div id="totalBreak" class="summary">0h</div></div>
+        <div class="card"><p>Total Attendance Records</p><div id="totalRecords" class="summary">0</div></div>
+      </div>
+
+      <div class="card">
+        <h3>Employee Report</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Employee</th><th>Date</th><th>In</th><th>Out</th><th>Break Count</th><th>Break Time</th><th>Work Time</th>
+            </tr>
+          </thead>
+          <tbody id="adminReport"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<script>
+const employees = [
+  { id: 'emp1', name: 'Employee 1', password: '1234' },
+  { id: 'emp2', name: 'Employee 2', password: '1234' },
+  { id: 'emp3', name: 'Employee 3', password: '1234' },
+  { id: 'emp4', name: 'Employee 4', password: '1234' },
+  { id: 'emp5', name: 'Employee 5', password: '1234' }
+];
+
+let currentUser = JSON.parse(localStorage.getItem('currentUser')) || null;
+let attendance = JSON.parse(localStorage.getItem('attendance')) || [];
+
+function saveData() {
+  localStorage.setItem('attendance', JSON.stringify(attendance));
+  localStorage.setItem('currentUser', JSON.stringify(currentUser));
+}
+
+function today() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function nowTime() {
+  return new Date().toTimeString().slice(0,5);
+}
+
+function toMinutes(time) {
+  if (!time) return 0;
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function formatMinutes(mins) {
+  if (!mins || mins < 0) return '0h 0m';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h}h ${m}m`;
+}
+
+function getTodayRecord(empId) {
+  let record = attendance.find(a => a.employeeId === empId && a.date === today());
+  if (!record) {
+    record = { employeeId: empId, date: today(), inTime: '', outTime: '', breaks: [] };
+    attendance.push(record);
+  }
+  return record;
+}
+
+function calculateBreakMinutes(record) {
+  return record.breaks.reduce((total, b) => {
+    if (b.start && b.end) return total + (toMinutes(b.end) - toMinutes(b.start));
+    return total;
+  }, 0);
+}
+
+function calculateWorkMinutes(record) {
+  if (!record.inTime || !record.outTime) return 0;
+  return Math.max(0, toMinutes(record.outTime) - toMinutes(record.inTime) - calculateBreakMinutes(record));
+}
+
+function login() {
+  const user = document.getElementById('username').value.trim();
+  const pass = document.getElementById('password').value.trim();
+
+  if (user === 'admin' && pass === 'admin123') {
+    currentUser = { role: 'admin', id: 'admin', name: 'Admin' };
+  } else {
+    const emp = employees.find(e => e.id === user && e.password === pass);
+    if (!emp) return alert('Wrong username or password');
+    currentUser = { role: 'employee', id: emp.id, name: emp.name };
+  }
+
+  saveData();
+  renderApp();
+}
+
+function logout() {
+  currentUser = null;
+  localStorage.removeItem('currentUser');
+  renderApp();
+}
+
+function markInTime() {
+  const record = getTodayRecord(currentUser.id);
+  if (record.inTime) return alert('In time already marked');
+  record.inTime = nowTime();
+  saveData(); renderEmployee();
+}
+
+function startBreak() {
+  const record = getTodayRecord(currentUser.id);
+  if (!record.inTime) return alert('First mark In Time');
+  const openBreak = record.breaks.find(b => !b.end);
+  if (openBreak) return alert('Break already started');
+  record.breaks.push({ start: nowTime(), end: '' });
+  saveData(); renderEmployee();
+}
+
+function endBreak() {
+  const record = getTodayRecord(currentUser.id);
+  const openBreak = record.breaks.find(b => !b.end);
+  if (!openBreak) return alert('No active break found');
+  openBreak.end = nowTime();
+  saveData(); renderEmployee();
+}
+
+function markOutTime() {
+  const record = getTodayRecord(currentUser.id);
+  if (!record.inTime) return alert('First mark In Time');
+  const openBreak = record.breaks.find(b => !b.end);
+  if (openBreak) return alert('Please end current break first');
+  record.outTime = nowTime();
+  saveData(); renderEmployee();
+}
+
+function renderEmployee() {
+  document.getElementById('employeeName').innerText = currentUser.name;
+  const record = getTodayRecord(currentUser.id);
+
+  document.getElementById('todayStatus').innerHTML = `
+    <p><b>Date:</b> ${record.date}</p>
+    <p><b>In Time:</b> ${record.inTime || 'Not marked'}</p>
+    <p><b>Out Time:</b> ${record.outTime || 'Not marked'}</p>
+    <p><b>Total Breaks:</b> ${record.breaks.length}</p>
+    <p><b>Break Time:</b> ${formatMinutes(calculateBreakMinutes(record))}</p>
+    <p><b>Work Time:</b> ${formatMinutes(calculateWorkMinutes(record))}</p>
+  `;
+
+  const myRecords = attendance.filter(a => a.employeeId === currentUser.id).reverse();
+  document.getElementById('myHistory').innerHTML = myRecords.map(r => `
+    <tr>
+      <td>${r.date}</td>
+      <td>${r.inTime || '-'}</td>
+      <td>${r.outTime || '-'}</td>
+      <td>${r.breaks.length}</td>
+      <td>${formatMinutes(calculateBreakMinutes(r))}</td>
+      <td>${formatMinutes(calculateWorkMinutes(r))}</td>
+    </tr>
+  `).join('');
+}
+
+function getEmployeeName(id) {
+  return employees.find(e => e.id === id)?.name || id;
+}
+
+function isSameWeek(dateStr, selectedDateStr) {
+  const d = new Date(dateStr);
+  const selected = new Date(selectedDateStr);
+  const start = new Date(selected);
+  start.setDate(selected.getDate() - selected.getDay());
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return d >= start && d <= end;
+}
+
+function filterRecords() {
+  const emp = document.getElementById('filterEmployee').value;
+  const type = document.getElementById('filterType').value;
+  const date = document.getElementById('filterDate').value || today();
+
+  return attendance.filter(r => {
+    const empMatch = emp === 'all' || r.employeeId === emp;
+    let dateMatch = true;
+
+    if (type === 'daily') dateMatch = r.date === date;
+    if (type === 'weekly') dateMatch = isSameWeek(r.date, date);
+    if (type === 'monthly') dateMatch = r.date.slice(0,7) === date.slice(0,7);
+    if (type === 'all') dateMatch = true;
+
+    return empMatch && dateMatch;
+  });
+}
+
+function renderAdmin() {
+  const records = filterRecords();
+  let totalWork = 0;
+  let totalBreak = 0;
+
+  document.getElementById('adminReport').innerHTML = records.map(r => {
+    const breakMins = calculateBreakMinutes(r);
+    const workMins = calculateWorkMinutes(r);
+    totalBreak += breakMins;
+    totalWork += workMins;
+    return `
+      <tr>
+        <td>${getEmployeeName(r.employeeId)}</td>
+        <td>${r.date}</td>
+        <td>${r.inTime || '-'}</td>
+        <td>${r.outTime || '-'}</td>
+        <td>${r.breaks.length}</td>
+        <td>${formatMinutes(breakMins)}</td>
+        <td>${formatMinutes(workMins)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('totalWork').innerText = formatMinutes(totalWork);
+  document.getElementById('totalBreak').innerText = formatMinutes(totalBreak);
+  document.getElementById('totalRecords').innerText = records.length;
+}
+
+function setupAdminFilters() {
+  const select = document.getElementById('filterEmployee');
+  select.innerHTML = '<option value="all">All Employees</option>' + employees.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+  document.getElementById('filterDate').value = today();
+}
+
+function renderApp() {
+  document.getElementById('loginBox').classList.add('hidden');
+  document.getElementById('employeePanel').classList.add('hidden');
+  document.getElementById('adminPanel').classList.add('hidden');
+  document.getElementById('logoutBtn').classList.add('hidden');
+
+  if (!currentUser) {
+    document.getElementById('loginBox').classList.remove('hidden');
+    return;
+  }
+
+  document.getElementById('logoutBtn').classList.remove('hidden');
+
+  if (currentUser.role === 'admin') {
+    document.getElementById('adminPanel').classList.remove('hidden');
+    setupAdminFilters();
+    renderAdmin();
+  } else {
+    document.getElementById('employeePanel').classList.remove('hidden');
+    renderEmployee();
+  }
+}
+
+renderApp();
+</script>
+</body>
+</html>
